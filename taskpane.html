@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canned Responses</title>
+    <!-- Office.js is required to interact with Outlook -->
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel to compile JSX in browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        /* Outlook-like scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 select-none">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- DATA SOURCE ---
+        // In a production version, you would replace this hardcoded array with a fetch() call 
+        // to your SharePoint REST API or a JSON file hosted on your server.
+        const TEMPLATE_DATABASE = [
+            {
+                id: 1,
+                title: "General Acknowledgment",
+                category: "General",
+                content: "<p>Hi there,</p><p>Thanks for reaching out! We have received your message and are looking into it. We will get back to you within 24 hours.</p><p>Best regards,</p>"
+            },
+            {
+                id: 2,
+                title: "Meeting Request",
+                category: "Sales",
+                content: "<p>Hi,</p><p>I'd love to schedule a quick call to discuss this further. Please feel free to book a time on my calendar here: <a href='#'>Book Time</a></p><p>Thanks!</p>"
+            },
+            {
+                id: 3,
+                title: "Invoice Attached",
+                category: "Finance",
+                content: "<p>Hello,</p><p>Please find the attached invoice for the recent services provided. Let us know if you have any questions regarding the billing.</p>"
+            },
+            {
+                id: 4,
+                title: "Ticket Solved",
+                category: "Support",
+                content: "<p>Hi,</p><p>We are pleased to inform you that your ticket has been resolved. If you have further issues, please just reply to this email.</p><p><strong>Status:</strong> Closed</p>"
+            },
+            {
+                id: 5,
+                title: "Out of Office",
+                category: "HR",
+                content: "<p>Hello,</p><p>I am currently out of the office with no access to email. I will be returning on [Date].</p><p>For urgent matters, please contact [Name].</p>"
+            }
+        ];
+
+        // --- APP COMPONENT ---
+        const App = () => {
+            const [search, setSearch] = useState("");
+            const [selectedCategory, setSelectedCategory] = useState("All");
+            const [toast, setToast] = useState(null);
+            const [isOfficeInitialized, setIsOfficeInitialized] = useState(false);
+
+            useEffect(() => {
+                Office.onReady((info) => {
+                    if (info.host === Office.HostType.Outlook) {
+                        setIsOfficeInitialized(true);
+                    }
+                });
+            }, []);
+
+            // Filter Logic
+            const filteredTemplates = useMemo(() => {
+                return TEMPLATE_DATABASE.filter(t => {
+                    const matchesSearch = t.title.toLowerCase().includes(search.toLowerCase());
+                    const matchesCategory = selectedCategory === "All" || t.category === selectedCategory;
+                    return matchesSearch && matchesCategory;
+                });
+            }, [search, selectedCategory]);
+
+            // Get Unique Categories
+            const categories = useMemo(() => {
+                const cats = new Set(TEMPLATE_DATABASE.map(t => t.category));
+                return ["All", ...Array.from(cats)];
+            }, []);
+
+            // Insert Handler
+            const handleInsert = (htmlContent) => {
+                if (!isOfficeInitialized) {
+                    showToast("Error: Office JS not loaded", "error");
+                    return;
+                }
+
+                Office.context.mailbox.item.body.setSelectedDataAsync(
+                    htmlContent,
+                    { coercionType: Office.CoercionType.Html },
+                    (asyncResult) => {
+                        if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+                            showToast("Failed to insert: " + asyncResult.error.message, "error");
+                        } else {
+                            showToast("Inserted successfully!", "success");
+                        }
+                    }
+                );
+            };
+
+            // Toast Helper
+            const showToast = (msg, type) => {
+                setToast({ msg, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            return (
+                <div className="flex flex-col h-screen">
+                    {/* Header */}
+                    <div className="p-4 bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
+                        <h1 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                            <i className="ph ph-chats-teardrop text-blue-600 text-xl"></i>
+                            Canned Responses
+                        </h1>
+                        
+                        {/* Search */}
+                        <div className="relative mb-3">
+                            <i className="ph ph-magnifying-glass absolute left-3 top-2.5 text-gray-400"></i>
+                            <input 
+                                type="text" 
+                                placeholder="Search templates..." 
+                                className="w-full pl-9 pr-3 py-2 bg-gray-100 border-transparent focus:bg-white focus:ring-2 focus:ring-blue-500 rounded-md text-sm transition-all outline-none"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                        </div>
+
+                        {/* Category Chips */}
+                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                            {categories.map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => setSelectedCategory(cat)}
+                                    className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                                        selectedCategory === cat 
+                                            ? "bg-blue-600 text-white" 
+                                            : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                                    }`}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Content List */}
+                    <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                        {filteredTemplates.length === 0 ? (
+                            <div className="text-center text-gray-500 mt-10">
+                                <i className="ph ph-files text-4xl mb-2 opacity-30"></i>
+                                <p>No templates found.</p>
+                            </div>
+                        ) : (
+                            filteredTemplates.map(template => (
+                                <div key={template.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow group">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">{template.category}</span>
+                                    </div>
+                                    <h3 className="font-medium text-gray-800 mb-2">{template.title}</h3>
+                                    
+                                    {/* Preview Text (Stripped HTML) */}
+                                    <p className="text-xs text-gray-500 mb-3 line-clamp-2">
+                                        {template.content.replace(/<[^>]*>?/gm, '')}
+                                    </p>
+
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => handleInsert(template.content)}
+                                            className="flex-1 flex items-center justify-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 py-1.5 rounded text-sm font-medium transition-colors"
+                                        >
+                                            <i className="ph ph-arrow-right"></i>
+                                            Insert
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    {/* Footer / Status */}
+                    <div className="p-2 bg-gray-50 border-t border-gray-200 text-center">
+                        <p className="text-xs text-gray-400">
+                            {isOfficeInitialized ? "Ready to insert" : "Loading Office API..."}
+                        </p>
+                    </div>
+
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className={`fixed bottom-4 left-4 right-4 p-3 rounded shadow-lg text-sm text-white text-center animate-fade-in-up ${
+                            toast.type === 'error' ? 'bg-red-500' : 'bg-gray-800'
+                        }`}>
+                            {toast.msg}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
